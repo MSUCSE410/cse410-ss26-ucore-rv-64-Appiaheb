@@ -93,8 +93,12 @@ clean:
 
 # BOARD
 BOARD		?= qemu
-SBI			?= rustsbi
+SBI			?= default
+ifeq ($(SBI),rustsbi)
 BOOTLOADER	:= ./bootloader/rustsbi-qemu.bin
+else
+BOOTLOADER	:= default
+endif
 
 QEMU = qemu-system-riscv64
 QEMUOPTS = \
@@ -124,4 +128,3 @@ user:
 	make -C user CHAPTER=$(CHAPTER) BASE=$(BASE)
 
 test: user run
-

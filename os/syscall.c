@@ -4,6 +4,7 @@
 #include "syscall_ids.h"
 #include "timer.h"
 #include "trap.h"
+#include "proc.h"
 
 uint64 sys_write(int fd, char *str, uint len)
 {
@@ -39,6 +40,31 @@ uint64 sys_gettimeofday(TimeVal *val, int _tz)
 /*
 * LAB1: you may need to define sys_task_info here
 */
+uint64 sys_task_info(TaskInfo *ti)
+{
+	if (ti == 0) {
+		return -1;
+	}
+
+	struct proc *p = curr_proc();
+	TaskInfo info;
+
+	// status of current task is Running
+	info.status = Running;
+
+	// copy syscall counts
+	for (int i = 0; i < MAX_SYSCALL_NUM; i++) {
+		info.syscall_times[i] = p->syscall_times[i];
+	}
+
+	// compute runtime in ms since first scheduled
+	uint64 now = get_cycle();
+	uint64 elapsed_cycles = (p->start_time == 0) ? 0 : (now - p->start_time);
+	info.time = (int)(elapsed_cycles * 1000 / CPU_FREQ);
+
+	*ti = info;
+	return 0;
+}
 
 extern char trap_page[];
 
@@ -53,26 +79,33 @@ void syscall()
 	/*
 	* LAB1: you may need to update syscall counter for task info here
 	*/
+	// LAB1: update syscall counter for current task
+	struct proc *p = curr_proc();
+	if (id >= 0 && id < MAX_SYSCALL_NUM) {
+		p->syscall_times[id]++;
+	}
+
 	switch (id) {
 	case SYS_write:
-		ret = sys_write(args[0], (char *)args[1], args[2]);
-		break;
+    	ret = sys_write(args[0], (char *)args[1], args[2]);
+    	break;
 	case SYS_exit:
-		sys_exit(args[0]);
-		// __builtin_unreachable();
+    	sys_exit(args[0]);
+    	break;  // FIXED: Added missing break
 	case SYS_sched_yield:
-		ret = sys_sched_yield();
-		break;
+    	ret = sys_sched_yield();
+    	break;
 	case SYS_gettimeofday:
-		ret = sys_gettimeofday((TimeVal *)args[0], args[1]);
-		break;
-	/*
-	* LAB1: you may need to add SYS_taskinfo case here
-	*/
+    	ret = sys_gettimeofday((TimeVal *)args[0], args[1]);
+    	break;
+	case SYS_task_info:
+    	ret = sys_task_info((TaskInfo *)args[0]);
+    	break;
 	default:
-		ret = -1;
-		errorf("unknown syscall %d", id);
+    	ret = -1;
+    	errorf("unknown syscall %d", id);
 	}
+
 	trapframe->a0 = ret;
 	tracef("syscall ret %d", ret);
 }
