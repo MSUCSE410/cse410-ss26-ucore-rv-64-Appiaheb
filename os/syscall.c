@@ -38,6 +38,8 @@ uint64 sys_gettimeofday(TimeVal *val, int _tz)
 	TimeVal now;
 	uint64 cycle = get_cycle();
 
+	// The result is prepared in kernel memory, then copied to the
+	// user virtual address through the current process page table.
 	now.sec = cycle / CPU_FREQ;
 	now.usec = (cycle % CPU_FREQ) * 1000000 / CPU_FREQ;
 	if (copyout(p->pagetable, (uint64)val, (char *)&now, sizeof(now)) < 0)
@@ -55,6 +57,7 @@ uint64 sys_task_info(TaskInfo *ti)
 	uint64 now = get_cycle();
 	uint64 elapsed_cycles = (p->start_time == 0) ? 0 : (now - p->start_time);
 
+	// Like gettimeofday, ti is a user VA, so we must return it with copyout.
 	info.status = Running;
 	memmove(info.syscall_times, p->syscall_times, sizeof(info.syscall_times));
 	info.time = (int)(elapsed_cycles * 1000 / CPU_FREQ);
@@ -67,6 +70,7 @@ static int vm_port_to_perm(int port)
 {
 	int perm = PTE_U;
 
+	// User port bits map to page-table R/W/X bits; PTE_U is always required.
 	if (port & 0x1)
 		perm |= PTE_R;
 	if (port & 0x2)
@@ -125,6 +129,8 @@ uint64 sys_mmap(void *start, uint64 len, int port, int flag, int fd)
 		return -1;
 
 	perm = vm_port_to_perm(port);
+	// Anonymous mmap does not require contiguous physical memory, so we
+	// allocate and map one page at a time.
 	for (uint64 a = va; a < va + map_len; a += PGSIZE) {
 		void *pa = kalloc();
 
@@ -157,6 +163,7 @@ uint64 sys_munmap(void *start, uint64 len)
 	if (range_has_unmapped_page(p->pagetable, va, unmap_len))
 		return -1;
 
+	// The range is already validated, so we can remove it page by page.
 	uvmunmap(p->pagetable, va, unmap_len / PGSIZE, 1);
 	return 0;
 }
@@ -177,6 +184,8 @@ void syscall()
 	struct proc *p = curr_proc();
 	if (id >= 0 && id < MAX_SYSCALL_NUM)
 		p->syscall_times[id]++;
+	// a7 selects the syscall, a0-a5 carry arguments, and the return value
+	// is written back to a0 before returning to user mode.
 	switch (id) {
 	case SYS_write:
 		ret = sys_write(args[0], args[1], args[2]);

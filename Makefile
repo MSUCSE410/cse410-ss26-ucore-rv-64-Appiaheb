@@ -94,9 +94,17 @@ clean:
 # BOARD
 BOARD		?= qemu
 SBI			?= rustsbi
-BOOTLOADER	:= ./bootloader/rustsbi-qemu.bin
-
 QEMU = qemu-system-riscv64
+QEMU_MAJOR = $(shell $(QEMU) --version 2>/dev/null | sed -n '1s/.*version \([0-9][0-9]*\).*/\1/p')
+# QEMU 8.x in Codespaces crashes with the bundled RustSBI image before the
+# kernel starts, so prefer QEMU's built-in OpenSBI there. Older setups keep
+# using the course-provided bootloader unless BOOTLOADER is overridden.
+ifeq ($(shell [ -n "$(QEMU_MAJOR)" ] && [ "$(QEMU_MAJOR)" -ge 8 ] && echo yes),yes)
+BOOTLOADER ?= default
+else
+BOOTLOADER ?= ./bootloader/rustsbi-qemu.bin
+endif
+
 QEMUOPTS = \
 	-nographic \
 	-machine virt \
@@ -124,4 +132,3 @@ user:
 	make -C user CHAPTER=$(CHAPTER) BASE=$(BASE)
 
 test: user run
-
